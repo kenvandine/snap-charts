@@ -43,6 +43,28 @@ export function devicesByApp(
   };
 }
 
+// Plain text matches anywhere; `*` and `?` wildcards match the whole name or title.
+export function matchesSearch(
+  snap: { name: string; title: string },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!/[*?]/.test(q))
+    return `${snap.name} ${snap.title}`.toLowerCase().includes(q);
+  const pattern = new RegExp(
+    `^${[...q]
+      .map((c) =>
+        c === "*"
+          ? ".*"
+          : c === "?"
+            ? "."
+            : c.replace(/[.+^${}()|[\]\\]/, "\\$&"),
+      )
+      .join("")}$`,
+  );
+  return [snap.name, snap.title].some((s) => pattern.test(s.toLowerCase()));
+}
+
 export function rankApps(
   series: Plot["series"],
   limit: number,
