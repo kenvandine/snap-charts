@@ -130,4 +130,13 @@ test("search matches substrings, or whole names and titles with wildcards", () =
   );
   assert.equal(matchesSearch({ name: "a.b", title: "a.b" }, "a.*"), true);
   assert.equal(matchesSearch({ name: "axb", title: "axb" }, "a.?"), false);
+  const slow = {
+    name: "shattered-pixel-dungeon",
+    title: "Shattered Pixel Dungeon",
+  };
+  const start = Date.now();
+  assert.equal(matchesSearch(slow, "********************x"), false);
+  assert.equal(matchesSearch(slow, "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*x"), false);
+  assert.equal(matchesSearch(slow, "*s*p*d*"), true);
+  assert.ok(Date.now() - start < 500);
 });
