@@ -90,7 +90,8 @@ def fetch_metric(snap, metric, start, end):
 def discover(config):
     request = Request('https://api.snapcraft.io/v2/snaps/find?publisher=' + config['publisher'],
                       headers={'Snap-Device-Series': '16', 'User-Agent': 'snap-charts/0.1'})
-    for attempt in range(3):
+    for attempt in range(5):
+        delay = 2 ** attempt
         try:
             with urlopen(request, timeout=60) as response:
                 results = json.load(response)['results']
@@ -98,10 +99,15 @@ def discover(config):
                 raise ValueError('Empty publisher inventory')
             break
         except Exception as error:
-            if attempt == 2:
+            if attempt == 4:
                 raise RuntimeError('Publisher discovery failed; refusing an incomplete inventory '
                                    f'({type(error).__name__}: {error})') from None
-            time.sleep(2 ** attempt)
+            retry_after = getattr(error, 'headers', None) and error.headers.get('Retry-After', '')
+            if retry_after and retry_after.isdigit():
+                delay = min(int(retry_after), 300)
+            elif getattr(error, 'code', None) == 429:
+                delay = 15 * 2 ** attempt
+            time.sleep(delay)
     snaps = {s['name']: {'name': s['name'], 'title': s.get('snap', {}).get('title', s['name'])} for s in results}
     for snap in config['snaps']:
         snaps.setdefault(snap['name'], {'name': snap['name'], 'title': snap.get('title', snap['name'])})

@@ -12,6 +12,7 @@ SNAP = Path(os.environ['SNAP'])
 COMMON = Path(os.environ['SNAP_COMMON'])
 CONFIG = COMMON / 'config' / 'snaps.json'
 INTERVAL = 24 * 3600
+RETRY_INTERVAL = 30 * 60
 
 
 def snap_get(key):
@@ -31,6 +32,7 @@ def prepare_config(publisher):
 
 def main():
     while True:
+        wait = INTERVAL
         publisher = snap_get('publisher')
         credentials = snap_get('credentials')
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', publisher):
@@ -48,8 +50,10 @@ def main():
                 '--config', str(CONFIG), '--state', str(COMMON / 'state'),
                 '--output', str(COMMON / 'data'), '--sync-config'], env=env)
             print(f'Collection finished with status {result.returncode}', flush=True)
+            if result.returncode:
+                wait = RETRY_INTERVAL
         # Wake early when settings change: the configure hook restarts this service.
-        time.sleep(INTERVAL)
+        time.sleep(wait)
 
 
 if __name__ == '__main__':
