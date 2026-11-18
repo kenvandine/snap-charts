@@ -108,3 +108,15 @@ Browser tests require `npx playwright install chromium` once. They generate synt
 Aggregate counts represent **snap installations**, not unique machines. Seven-day installed-base metrics are Store rolling averages, not weekly sums. Device change categories should be read independently; adding new, continued and lost does not give installed base. The chart defaults to the top 10 series; every other series can be selected individually. The accessible table shows up to 100 dates for the displayed series, while CSV includes every series and date in the selected period. Partial coverage can change totals and apparent growth. Metric timestamps and coverage are exposed so these limits are visible.
 
 MIT licensed. Header structure and initial inventory adapted from popey/snap-status (MIT).
+
+## Snap package (snap-charts-server)
+
+`snap/snapcraft.yaml` builds a classic-confinement snap that serves the dashboard and refreshes metrics daily. Classic confinement is needed to run the host `snapcraft` CLI (`sudo snap install snapcraft --classic`).
+
+```sh
+sudo snap set snap-charts-server publisher=<store-username>
+sudo snap set snap-charts-server credentials="$(cat snap-charts.credentials)"
+sudo snap set snap-charts-server port=8080   # optional, default 8080
+```
+
+Setting options restarts the services. The collector writes `$SNAP_COMMON/config/snaps.json` for the configured publisher and fills in its snap list from Store discovery on each run (`collect.py --publisher/--sync-config`). Data lives in `$SNAP_COMMON`; follow progress with `snap logs -f snap-charts-server.collector`. Credentials are stored in snapd's configuration, so use a metrics-only export.

@@ -156,13 +156,13 @@ def collect_one(task, refresh=True):
     return snap, metric, record
 
 
-def publish(records, snaps, output, history_start, demo=False):
+def publish(records, snaps, output, history_start, demo=False, publisher='popey'):
     # This directory is generated output only. Remove obsolete partitions so
     # excluded snaps or demo files cannot remain in a subsequent deployment.
     output.mkdir(parents=True, exist_ok=True)
     obsolete = set(output.rglob('*.json'))
     manifest = {'schemaVersion': 1, 'generatedAt': datetime.now(timezone.utc).isoformat(),
-                'publisher': 'popey', 'demo': demo, 'historyStart': str(history_start), 'snaps': snaps, 'metrics': METRICS,
+                'publisher': publisher, 'demo': demo, 'historyStart': str(history_start), 'snaps': snaps, 'metrics': METRICS,
                 'records': {}, 'partitions': {}}
     by_metric = {metric: {} for metric in METRICS}
     for snap, metric, record in records:
@@ -234,7 +234,7 @@ def collect_batch(config, root, output, snaps, start, end, historical_only, cont
     if historical_only:
         records = [(s, m, json.loads(path.read_text()) if path.exists() else {})
                    for s, m in pairs for path in [root / s / (m + '.json')]]
-    publish(records, snaps, output, start)
+    publish(records, snaps, output, start, publisher=config['publisher'])
     complete = sum(r.get('historyFrom', str(end)) <= str(start) for _, _, r in records)
     earliest = min(r.get('historyFrom', str(end)) for _, _, r in records)
     print(f'Snapshot updated: earliest checked date {earliest}; {complete}/{len(pairs)} metrics checked back to {start}.', flush=True)
@@ -252,10 +252,16 @@ def main():
                         help='Fetch a historical batch without re-querying recent observations')
     parser.add_argument('--backfill-until-complete', action='store_true',
                         help='Continue historical-only batches until every metric reaches historyStart')
+    parser.add_argument('--publisher', help='Override the publisher in the config file')
+    parser.add_argument('--sync-config', action='store_true',
+                        help='Write the discovered snap list back to the config file')
     args = parser.parse_args()
     if args.credentials:
         os.environ['SNAPCRAFT_STORE_CREDENTIALS'] = args.credentials.read_text().strip()
-    config = json.loads(Path(args.config).read_text())
+    config_path = Path(args.config)
+    config = json.loads(config_path.read_text())
+    if args.publisher:
+        config['publisher'] = args.publisher
     root = Path(args.state)
     root.mkdir(parents=True, exist_ok=True)
     with (root / '.collector.lock').open('a') as lock:
@@ -266,6 +272,10 @@ def main():
         start = date.fromisoformat(config['historyStart'])
         end = datetime.now(timezone.utc).date() - timedelta(days=1)
         snaps = discover(config)
+        if args.sync_config:
+            config['snaps'] = [{k: v for k, v in s.items() if k == 'name' or (k == 'title' and v != s['name'])}
+                               for s in snaps]
+            write_json(config_path, config)
         historical_only = args.backfill_only or args.backfill_until_complete
         if config['backfillRequests'] <= 0 and historical_only:
             raise SystemExit('backfillRequests must be positive for historical collection')
