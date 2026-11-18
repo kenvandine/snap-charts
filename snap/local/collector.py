@@ -40,7 +40,9 @@ def main():
                   flush=True)
         else:
             prepare_config(publisher)
-            env = {**os.environ, 'SNAPCRAFT_STORE_CREDENTIALS': credentials}
+            env = {**os.environ, 'SNAPCRAFT_STORE_CREDENTIALS': credentials,
+                   # The staged Python's default OpenSSL paths do not exist inside the snap.
+                   'SSL_CERT_FILE': '/etc/ssl/certs/ca-certificates.crt'}
             result = subprocess.run([
                 sys.executable, str(SNAP / 'scripts' / 'collect.py'),
                 '--config', str(CONFIG), '--state', str(COMMON / 'state'),

@@ -97,9 +97,10 @@ def discover(config):
             if not results:
                 raise ValueError('Empty publisher inventory')
             break
-        except Exception:
+        except Exception as error:
             if attempt == 2:
-                raise RuntimeError('Publisher discovery failed; refusing an incomplete inventory') from None
+                raise RuntimeError('Publisher discovery failed; refusing an incomplete inventory '
+                                   f'({type(error).__name__}: {error})') from None
             time.sleep(2 ** attempt)
     snaps = {s['name']: {'name': s['name'], 'title': s.get('snap', {}).get('title', s['name'])} for s in results}
     for snap in config['snaps']:
