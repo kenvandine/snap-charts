@@ -36,6 +36,7 @@ parts:
     plugin: python
     source: .
     python-requirements: [requirements.txt]
+    stage-packages: [python3.14-minimal, libpython3.14-minimal, libpython3.14-stdlib]
   dashboard:
     plugin: nil
     source: .
