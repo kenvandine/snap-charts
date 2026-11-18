@@ -21,11 +21,11 @@ confinement: classic
 
 apps:
   web:
-    command: /usr/bin/python3 $SNAP/bin/serve.py
+    command: bin/serve.py
     daemon: simple
     restart-condition: always
   collector:
-    command: /usr/bin/python3 $SNAP/bin/collector.py
+    command: bin/collector.py
     daemon: simple
     restart-condition: always
 

@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """Serve the built dashboard, with generated metrics read from the snap's writable data."""
 import os
 import subprocess

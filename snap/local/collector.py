@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 """Daily collection loop configured through snap settings."""
 import json
 import os
