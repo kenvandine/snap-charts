@@ -61,12 +61,18 @@ class StoreClient:
             except (OSError, ValueError) as error:
                 raise StoreError(f'Store request failed: {type(error).__name__}') from None
 
-    def snap_id(self, name):
+    def _account_snaps(self):
         with self._lock:
             if self._snap_ids is None:
                 self._snap_ids = self._request('GET', '/dev/api/account')['snaps'].get(SERIES, {})
+            return self._snap_ids
+
+    def snap_names(self):
+        return sorted(self._account_snaps())
+
+    def snap_id(self, name):
         try:
-            return self._snap_ids[name]['snap-id']
+            return self._account_snaps()[name]['snap-id']
         except KeyError:
             raise StoreError(f'Snap {name} is not accessible with these credentials') from None
 

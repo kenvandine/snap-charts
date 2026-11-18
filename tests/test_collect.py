@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import merge, validate, collect_one, publish, select_backfill, main
+from collect import discover, merge, validate, collect_one, publish, select_backfill, main
 
 
 def metric(days, series):
@@ -75,6 +75,15 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(result['updatedAt'],record['updatedAt'])
             self.assertEqual(result['recentThrough'],record['recentThrough'])
             self.assertEqual(result['data']['series'][0]['values'],[5,12])
+    def test_discovery_falls_back_to_account_snaps_when_rate_limited(self):
+        class Client:
+            def snap_names(self):
+                return ['b', 'a']
+        with patch('collect.urlopen', side_effect=OSError('HTTP Error 429')), patch('collect.time.sleep'), \
+                patch('collect.store_client', return_value=Client()):
+            snaps = discover({'publisher': 'x', 'snaps': [{'name': 'a', 'title': 'A'}, {'name': 'c'}], 'exclude': ['b']})
+        self.assertEqual(snaps, [{'name': 'a', 'title': 'A'}, {'name': 'c', 'title': 'c'}])
+
     def test_publish_partitions_and_removes_obsolete_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
