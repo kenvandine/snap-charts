@@ -111,7 +111,7 @@ MIT licensed. Header structure and initial inventory adapted from popey/snap-sta
 
 ## Snap package (snap-charts-server)
 
-`snap/snapcraft.yaml` builds a classic-confinement snap that serves the dashboard and refreshes metrics daily. Classic confinement is needed to run the host `snapcraft` CLI (`sudo snap install snapcraft --classic`).
+`snap/snapcraft.yaml` builds a strictly confined snap that serves the dashboard and refreshes metrics daily using a bundled Snapcraft CLI (`SNAPCRAFT_BIN`/`SNAPCRAFT_PYTHON` point the collector at it).
 
 ```sh
 sudo snap set snap-charts-server publisher=<store-username>

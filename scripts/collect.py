@@ -20,9 +20,9 @@ NULL_COMPAT = False
 
 def run_snapcraft(arguments):
     global NULL_COMPAT
-    python = Path('/snap/snapcraft/current/bin/python')
+    python = Path(os.environ.get('SNAPCRAFT_PYTHON', '/snap/snapcraft/current/bin/python'))
     compat = [str(python), str(Path(__file__).with_name('snapcraft_metrics_compat.py'))]
-    result = subprocess.run((compat if NULL_COMPAT else ['snapcraft']) + arguments,
+    result = subprocess.run((compat if NULL_COMPAT else [os.environ.get('SNAPCRAFT_BIN', 'snapcraft')]) + arguments,
                             capture_output=True, text=True, timeout=120, check=False)
     if (result.returncode and not NULL_COMPAT and python.exists()
             and 'MetricsResponse' in result.stderr and 'input_value=None' in result.stderr):
