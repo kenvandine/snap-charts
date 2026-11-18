@@ -1,4 +1,4 @@
-"""Incremental Snapcraft metrics archive. Credentials only enter snapcraft's environment."""
+"""Incremental Snap Store metrics archive using the Store dashboard API."""
 import argparse
 import fcntl
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import time
 from urllib.request import Request, urlopen
 
@@ -15,23 +14,15 @@ DIMENSIONS = ('architecture', 'channel', 'country', 'operating_system', 'version
 METRICS = ['daily_device_change', 'weekly_device_change'] + [
     prefix + 'installed_base_by_' + dimension
     for prefix in ('', 'weekly_') for dimension in DIMENSIONS]
-NULL_COMPAT = False
+_CLIENT = None
 
 
-def run_snapcraft(arguments):
-    global NULL_COMPAT
-    python = Path(os.environ.get('SNAPCRAFT_PYTHON', '/snap/snapcraft/current/bin/python'))
-    compat = [str(python), str(Path(__file__).with_name('snapcraft_metrics_compat.py'))]
-    result = subprocess.run((compat if NULL_COMPAT else [os.environ.get('SNAPCRAFT_BIN', 'snapcraft')]) + arguments,
-                            capture_output=True, text=True, timeout=120, check=False)
-    if (result.returncode and not NULL_COMPAT and python.exists()
-            and 'MetricsResponse' in result.stderr and 'input_value=None' in result.stderr):
-        NULL_COMPAT = True
-        print('Applying Snapcraft null-observation compatibility fix.', flush=True)
-        result = subprocess.run(compat + arguments, capture_output=True, text=True,
-                                timeout=120, check=False)
-    result.check_returncode()
-    return result
+def store_client():
+    global _CLIENT
+    if _CLIENT is None:
+        from store_api import StoreClient
+        _CLIENT = StoreClient(os.environ.get('SNAPCRAFT_STORE_CREDENTIALS', ''))
+    return _CLIENT
 
 
 def write_json(path, value):
@@ -84,20 +75,15 @@ def merge(old, new):
 def fetch_metric(snap, metric, start, end):
     for attempt in range(3):
         try:
-            result = run_snapcraft([
-                'metrics', snap, '--name', metric, '--format=json',
-                '--start', str(start), '--end', str(end)])
-            # Some versions return no output when no data exists.
-            data = json.loads(result.stdout) if result.stdout.strip() else {
-                'status': 'OK', 'metric_name': metric, 'buckets': [], 'series': []}
+            data = store_client().metrics(snap, metric, start, end)
             validate(data, metric)
             if any(not str(start) <= day <= str(end) for day in data['buckets']):
                 raise ValueError('Returned dates outside requested range')
             return data
-        except (subprocess.SubprocessError, ValueError, KeyError):
+        except (RuntimeError, ValueError, KeyError):
             if attempt == 2:
                 # Do not print CLI output: it could contain credential diagnostics.
-                raise RuntimeError('Snapcraft query failed after three attempts') from None
+                raise RuntimeError('Store metrics query failed after three attempts') from None
             time.sleep(2 ** attempt)
 
 

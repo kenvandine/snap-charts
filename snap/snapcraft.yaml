@@ -13,7 +13,7 @@ description: |
     sudo snap set snap-charts-server port=8080   # optional
 
   Once the publisher is set, the list of snaps is discovered automatically and
-  written to snaps.json. Collection runs daily using the bundled Snapcraft CLI
+  written to snaps.json. Collection runs daily directly from the Store API
   and needs metrics-only credentials
   (snapcraft export-login --snaps=... --acls=package_metrics -).
 grade: stable
@@ -32,10 +32,10 @@ apps:
     plugs: [network]
 
 parts:
-  snapcraft-cli:
+  python-deps:
     plugin: python
-    python-packages: [snapcraft]
-    build-packages: [libapt-pkg-dev, pkg-config, gcc]
+    source: .
+    python-requirements: [requirements.txt]
   dashboard:
     plugin: nil
     source: .

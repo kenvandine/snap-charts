@@ -3,11 +3,10 @@ import json
 from pathlib import Path
 import sys
 import tempfile
-import subprocess
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import merge, validate, collect_one, publish, run_snapcraft, select_backfill, main
+from collect import merge, validate, collect_one, publish, select_backfill, main
 
 
 def metric(days, series):
@@ -76,20 +75,6 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(result['updatedAt'],record['updatedAt'])
             self.assertEqual(result['recentThrough'],record['recentThrough'])
             self.assertEqual(result['data']['series'][0]['values'],[5,12])
-    def test_null_bug_retries_with_compatibility_runner(self):
-        failed = subprocess.CompletedProcess(['snapcraft'], 70, '', 'MetricsResponse input_value=None')
-        success = subprocess.CompletedProcess(['compat'], 0, '{}', '')
-        with patch('collect.NULL_COMPAT', False), patch('collect.Path.exists', return_value=True), patch('collect.subprocess.run', side_effect=[failed, success]) as run:
-            self.assertEqual(run_snapcraft(['metrics', 'app']).stdout, '{}')
-            self.assertEqual(run.call_args_list[0].args[0][0], 'snapcraft')
-            self.assertTrue(run.call_args_list[1].args[0][1].endswith('snapcraft_metrics_compat.py'))
-
-    def test_unrelated_cli_failure_does_not_use_compatibility_runner(self):
-        failed = subprocess.CompletedProcess(['snapcraft'], 1, '', 'Permission denied')
-        with patch('collect.NULL_COMPAT', False), patch('collect.subprocess.run', return_value=failed) as run:
-            with self.assertRaises(subprocess.CalledProcessError):
-                run_snapcraft(['metrics', 'app'])
-            self.assertEqual(run.call_count, 1)
     def test_publish_partitions_and_removes_obsolete_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

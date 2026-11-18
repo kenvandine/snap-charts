@@ -40,9 +40,7 @@ def main():
                   flush=True)
         else:
             prepare_config(publisher)
-            env = {**os.environ, 'SNAPCRAFT_STORE_CREDENTIALS': credentials,
-                   'HOME': str(COMMON / 'home'),
-                   'SNAPCRAFT_BIN': str(SNAP / 'bin' / 'snapcraft'), 'SNAPCRAFT_PYTHON': sys.executable}
+            env = {**os.environ, 'SNAPCRAFT_STORE_CREDENTIALS': credentials}
             result = subprocess.run([
                 sys.executable, str(SNAP / 'scripts' / 'collect.py'),
                 '--config', str(CONFIG), '--state', str(COMMON / 'state'),
