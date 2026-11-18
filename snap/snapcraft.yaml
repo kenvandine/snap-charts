@@ -21,22 +21,20 @@ confinement: strict
 
 apps:
   web:
-    command: bin/python3 $SNAP/bin/serve.py
+    command: usr/bin/python3 $SNAP/bin/serve.py
     daemon: simple
     restart-condition: always
     plugs: [network-bind]
   collector:
-    command: bin/python3 $SNAP/bin/collector.py
+    command: usr/bin/python3 $SNAP/bin/collector.py
     daemon: simple
     restart-condition: always
     plugs: [network]
 
 parts:
   python-deps:
-    plugin: python
-    source: .
-    python-requirements: [requirements.txt]
-    stage-packages: [python3.14-minimal, libpython3.14-minimal, libpython3.14-stdlib]
+    plugin: nil
+    stage-packages: [python3, python3-pymacaroons]
   dashboard:
     plugin: nil
     source: .
@@ -47,7 +45,7 @@ parts:
       mkdir -p $CRAFT_PART_INSTALL/www $CRAFT_PART_INSTALL/scripts $CRAFT_PART_INSTALL/config
       cp -r dist/. $CRAFT_PART_INSTALL/www/
       rm -rf $CRAFT_PART_INSTALL/www/data
-      cp scripts/collect.py scripts/snapcraft_metrics_compat.py $CRAFT_PART_INSTALL/scripts/
+      cp scripts/collect.py scripts/store_api.py $CRAFT_PART_INSTALL/scripts/
       cp config/snaps.json $CRAFT_PART_INSTALL/config/
   services:
     plugin: dump
