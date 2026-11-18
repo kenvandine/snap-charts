@@ -1,6 +1,6 @@
 name: snap-charts-server
 title: Snap Charts Server
-base: core24
+base: core26
 version: git
 summary: Self-hosted Snap Store metrics dashboard for a publisher
 description: |
