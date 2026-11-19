@@ -25,27 +25,33 @@ class StoreClient:
             self.root, self.discharge = value['r'], value['d']
         except (ValueError, KeyError, TypeError, AttributeError):
             raise StoreError('SNAPCRAFT_STORE_CREDENTIALS is not valid exported Ubuntu One credentials') from None
-        self._lock = Lock()
+        # Account lookup may need to renew a discharge. It must not hold the
+        # same lock as renewal, or the first request with expired credentials hangs.
+        self._account_lock = Lock()
+        self._refresh_lock = Lock()
         self._snap_ids = None
 
-    def _header(self):
-        bound = Macaroon.deserialize(self.root).prepare_for_request(Macaroon.deserialize(self.discharge))
+    def _header(self, discharge=None):
+        bound = Macaroon.deserialize(self.root).prepare_for_request(Macaroon.deserialize(discharge or self.discharge))
         return f'Macaroon root={self.root}, discharge={bound.serialize()}'
 
     def _refresh(self, stale):
-        with self._lock:
+        with self._refresh_lock:
             if self.discharge != stale:
                 return
             request = Request(LOGIN_URL + '/api/v2/tokens/refresh',
                               json.dumps({'discharge_macaroon': self.discharge}).encode(),
                               {'Content-Type': 'application/json', 'Accept': 'application/json'})
-            with urlopen(request, timeout=60) as response:
-                self.discharge = json.load(response)['discharge_macaroon']
+            try:
+                with urlopen(request, timeout=60) as response:
+                    self.discharge = json.load(response)['discharge_macaroon']
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise StoreError(f'Store credential renewal failed: {type(error).__name__}') from None
 
     def _request(self, method, path, body=None):
         for attempt in range(2):
             stale = self.discharge
-            headers = {'Authorization': self._header(), 'Accept': 'application/json',
+            headers = {'Authorization': self._header(stale), 'Accept': 'application/json',
                        'User-Agent': 'snap-charts/0.1'}
             data = None
             if body is not None:
@@ -62,13 +68,10 @@ class StoreClient:
                 raise StoreError(f'Store request failed: {type(error).__name__}') from None
 
     def _account_snaps(self):
-        with self._lock:
+        with self._account_lock:
             if self._snap_ids is None:
                 self._snap_ids = self._request('GET', '/dev/api/account')['snaps'].get(SERIES, {})
             return self._snap_ids
-
-    def snap_names(self):
-        return sorted(self._account_snaps())
 
     def snap_id(self, name):
         try:

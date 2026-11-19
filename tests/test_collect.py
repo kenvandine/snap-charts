@@ -1,12 +1,14 @@
 from datetime import date
+import io
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from collect import discover, merge, validate, collect_one, publish, select_backfill, main
+from collect import discover, merge, validate, collect_one, collect_batch, publish, select_backfill, main
 
 
 def metric(days, series):
@@ -75,14 +77,58 @@ class CollectorTests(unittest.TestCase):
             self.assertEqual(result['updatedAt'],record['updatedAt'])
             self.assertEqual(result['recentThrough'],record['recentThrough'])
             self.assertEqual(result['data']['series'][0]['values'],[5,12])
-    def test_discovery_falls_back_to_account_snaps_when_rate_limited(self):
-        class Client:
-            def snap_names(self):
-                return ['b', 'a']
-        with patch('collect.urlopen', side_effect=OSError('HTTP Error 429')), patch('collect.time.sleep'), \
-                patch('collect.store_client', return_value=Client()):
-            snaps = discover({'publisher': 'x', 'snaps': [{'name': 'a', 'title': 'A'}, {'name': 'c'}], 'exclude': ['b']})
-        self.assertEqual(snaps, [{'name': 'a', 'title': 'A'}, {'name': 'c', 'title': 'c'}])
+    def test_discovery_fails_closed_without_enumerating_account_snaps(self):
+        error = HTTPError('https://api.snapcraft.io', 429, 'Limited', {'Retry-After': '120'}, None)
+        with patch('collect.urlopen', side_effect=error) as request, patch('collect.time.sleep') as sleep, \
+                patch('collect.store_client') as client:
+            client.return_value.snap_names.return_value = ['private-app', 'other-publisher-app']
+            with self.assertRaisesRegex(RuntimeError, 'Publisher discovery failed'):
+                discover({'publisher': 'x', 'snaps': [{'name': 'explicit-app'}]})
+        self.assertEqual(request.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [60, 60])
+        client.assert_not_called()
+
+    def test_discovery_recovers_and_only_unions_public_and_explicit_snaps(self):
+        response = io.BytesIO(json.dumps({'results': [
+            {'name': 'public-app', 'snap': {'title': 'Public App'}}, {'name': 'excluded'}]}).encode())
+        with patch('collect.urlopen', side_effect=[OSError('Unavailable'), response]), patch('collect.time.sleep'):
+            snaps = discover({'publisher': 'x', 'snaps': [{'name': 'explicit-private', 'title': 'Explicit'}],
+                              'exclude': ['excluded']})
+        self.assertEqual(snaps, [{'name': 'explicit-private', 'title': 'Explicit'},
+                                 {'name': 'public-app', 'title': 'Public App'}])
+
+    def test_failed_discovery_preserves_config_and_published_files(self):
+        for payload in ({'results': []}, {'unexpected': []}):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                config = root / 'config.json'
+                config.write_text(json.dumps({'publisher': 'x', 'snaps': [], 'workers': 1,
+                                             'historyStart': '2026-01-01', 'backfillRequests': 0}))
+                output = root / 'output'
+                output.mkdir()
+                manifest = output / 'manifest.json'
+                manifest.write_text('{"previous_snapshot": true}')
+                partition = output / 'previous.json'
+                partition.write_text('{"observations": [1, null, 2]}')
+                before = {p: p.read_bytes() for p in (config, manifest, partition)}
+                argv = ['collect.py', '--config', str(config), '--state', str(root / 'state'),
+                        '--output', str(output), '--sync-config']
+                with patch('sys.argv', argv), patch('collect.time.sleep'), \
+                        patch('collect.urlopen', side_effect=lambda *a, **k: io.BytesIO(json.dumps(payload).encode())):
+                    with self.assertRaisesRegex(RuntimeError, 'Publisher discovery failed'):
+                        main()
+                self.assertEqual({p: p.read_bytes() for p in before}, before)
+
+    def test_excluding_every_snap_preserves_snapshot(self):
+        with patch('collect.urlopen', return_value=io.BytesIO(b'{"results":[{"name":"app"}]}')):
+            with self.assertRaisesRegex(RuntimeError, 'No snaps selected'):
+                discover({'publisher': 'x', 'snaps': [], 'exclude': ['app']})
+        with tempfile.TemporaryDirectory() as tmp, patch('collect.publish') as publish_mock:
+            for historical, continuous in [(False, False), (True, False), (True, True)]:
+                with self.assertRaisesRegex(RuntimeError, 'No snaps selected'):
+                    collect_batch({}, Path(tmp), Path(tmp), [], date(2026, 1, 1), date(2026, 1, 2),
+                                  historical, continuous)
+            publish_mock.assert_not_called()
 
     def test_publish_partitions_and_removes_obsolete_data(self):
         with tempfile.TemporaryDirectory() as tmp:

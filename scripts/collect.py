@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+from threading import Lock
 import time
 from urllib.request import Request, urlopen
 
@@ -15,13 +16,15 @@ METRICS = ['daily_device_change', 'weekly_device_change'] + [
     prefix + 'installed_base_by_' + dimension
     for prefix in ('', 'weekly_') for dimension in DIMENSIONS]
 _CLIENT = None
+_CLIENT_LOCK = Lock()
 
 
 def store_client():
     global _CLIENT
-    if _CLIENT is None:
-        from store_api import StoreClient
-        _CLIENT = StoreClient(os.environ.get('SNAPCRAFT_STORE_CREDENTIALS', ''))
+    with _CLIENT_LOCK:
+        if _CLIENT is None:
+            from store_api import StoreClient
+            _CLIENT = StoreClient(os.environ.get('SNAPCRAFT_STORE_CREDENTIALS', ''))
     return _CLIENT
 
 
@@ -90,7 +93,6 @@ def fetch_metric(snap, metric, start, end):
 def discover(config):
     request = Request('https://api.snapcraft.io/v2/snaps/find?publisher=' + config['publisher'],
                       headers={'Snap-Device-Series': '16', 'User-Agent': 'snap-charts/0.1'})
-    results = None
     for attempt in range(3):
         delay = 2 ** attempt
         try:
@@ -101,21 +103,14 @@ def discover(config):
             break
         except Exception as error:
             if attempt == 2:
-                failure = f'{type(error).__name__}: {error}'
-                break
+                # Account access is not consent to publish private or other
+                # publishers' snaps. Keep the previous snapshot on discovery failure.
+                raise RuntimeError('Publisher discovery failed; preserving the published snapshot '
+                                   f'({type(error).__name__})') from None
             retry_after = getattr(error, 'headers', None) and error.headers.get('Retry-After', '')
             if retry_after and retry_after.isdigit():
                 delay = min(int(retry_after), 60)
             time.sleep(delay)
-    if results is None:
-        # The public search is rate limited; the credentials list every snap they can access.
-        try:
-            names = store_client().snap_names()
-        except Exception as error:
-            raise RuntimeError('Publisher discovery failed; refusing an incomplete inventory '
-                               f'({failure}; account fallback: {type(error).__name__}: {error})') from None
-        print(f'Public discovery failed ({failure}); using the snaps accessible to the credentials.', flush=True)
-        results = [{'name': name} for name in names]
     known = {s['name']: s.get('title') for s in config['snaps']}
     snaps = {s['name']: {'name': s['name'], 'title': s.get('snap', {}).get('title') or known.get(s['name']) or s['name']}
              for s in results}
@@ -123,6 +118,8 @@ def discover(config):
         snaps.setdefault(snap['name'], {'name': snap['name'], 'title': snap.get('title', snap['name'])})
     for name in config.get('exclude', []):
         snaps.pop(name, None)
+    if not snaps:
+        raise RuntimeError('No snaps selected; preserving the published snapshot')
     if any(not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name) for name in snaps):
         raise ValueError('Unsafe snap name')
     return sorted(snaps.values(), key=lambda s: s['name'])
@@ -207,6 +204,8 @@ def select_backfill(boundaries, start, limit, oldest_first=False, overview_first
 
 
 def collect_batch(config, root, output, snaps, start, end, historical_only, continuous):
+    if not snaps:
+        raise RuntimeError('No snaps selected; preserving the published snapshot')
     pairs = [(s['name'], m) for s in snaps for m in METRICS]
     boundaries = {}
     for pair in pairs:

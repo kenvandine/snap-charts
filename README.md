@@ -27,12 +27,13 @@ Demo figures are synthetic and visibly labelled. Generated files are ignored by 
 ## Collect real metrics
 
 ```sh
-snapcraft login
-npm run collect
+python3 -m pip install -r requirements.txt
+snapcraft export-login --acls package_metrics snap-charts.credentials
+npm run collect -- --credentials snap-charts.credentials
 npm run dev
 ```
 
-If you exported a metrics-only credential instead of using the desktop keyring, run `npm run collect -- --credentials snap-charts.credentials`. The file is read directly into the child process environment and never printed.
+Collection requires an exported metrics-only credential, supplied with `--credentials` or the `SNAPCRAFT_STORE_CREDENTIALS` environment variable. The collector does not read Snapcraft's desktop keyring. Credential files are read in memory and never printed.
 
 Metrics are fetched directly from the Snap Store dashboard API (`scripts/store_api.py`) using the exported Snapcraft credential, so the Snapcraft CLI is not needed at collection time. Store `null` observations are preserved as gaps, never zero.
 
@@ -98,6 +99,7 @@ Cloudflare hosting, R2 and Actions usage are subject to your account limits. The
 ## Verification
 
 ```sh
+python3 -m pip install -r requirements.txt
 npm run verify
 npm run test:browser
 npm audit --audit-level=high
@@ -119,4 +121,4 @@ sudo snap set snap-charts-server credentials="$(cat snap-charts.credentials)"
 sudo snap set snap-charts-server port=8080   # optional, default 8080
 ```
 
-Setting options restarts the services. The collector writes `$SNAP_COMMON/config/snaps.json` for the configured publisher and fills in its snap list from Store discovery on each run (`collect.py --publisher/--sync-config`). Data lives in `$SNAP_COMMON`; follow progress with `snap logs -f snap-charts-server.collector`. Credentials are stored in snapd's configuration, so use a metrics-only export.
+Setting options restarts the services. Ports must be integers from 1 to 65535. The collector writes `$SNAP_COMMON/config/snaps.json` for the configured publisher and fills in its snap list from Store discovery on each run (`collect.py --publisher/--sync-config`). Failed or empty discovery preserves the published snapshot; failed collections retry after 30 minutes. Account-accessible snaps are never automatically added as a fallback. Data lives in `$SNAP_COMMON`; follow progress with `snap logs -f snap-charts-server.collector`. Credentials are stored in snapd's configuration, so use a metrics-only export.
