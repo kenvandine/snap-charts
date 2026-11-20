@@ -545,9 +545,14 @@ async function init() {
   const top = params.get("top");
   if (top && ["all", "10", "20", "50"].includes(top))
     $<HTMLSelectElement>("rank-limit").value = top;
-  $<HTMLInputElement>("search").value =
-    params.get("search") ||
-    (params.get("snap") !== "all" ? (params.get("snap") ?? "") : "");
+  const requestedSnap = params.get("snap");
+  // A single-app link takes precedence over a retained gallery/search filter.
+  $<HTMLInputElement>("search").value = manifest.snaps.some(
+    (snap) => snap.name === requestedSnap,
+  )
+    ? requestedSnap!
+    : params.get("search") ||
+      (requestedSnap !== "all" ? (requestedSnap ?? "") : "");
   populateSnaps();
   updateView();
   for (const id of ["dimension", "window"]) {

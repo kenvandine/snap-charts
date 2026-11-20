@@ -128,6 +128,7 @@ export function renderAppCharts(
     const params = new URLSearchParams(location.search);
     params.set("view", "metrics");
     params.set("snap", series.name);
+    params.set("search", series.name);
     params.set("dimension", "architecture");
     link.href = `?${params}`;
     link.textContent = "Explore breakdowns →";
